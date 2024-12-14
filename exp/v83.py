@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import h5py
 import numpy as np
@@ -198,7 +198,7 @@ class RandomOverlayText(BaseTransform):
                 self.font_lens.append(len(pickle.load(f)))
 
     def apply_transform(
-        self, image: Image.Image, metadata: Optional[List[Dict[str, Any]]] = None
+        self, image: Image.Image, metadata: Optional[List[Dict[str, Any]]] = None, bboxes: Optional[List[Tuple]] = None, bbox_format: Optional[str] = None
     ) -> Image.Image:
         i = random.randrange(0, len(self.font_list))
         kwargs = dict(
@@ -250,7 +250,7 @@ class RandomOverlayImageAndResizedCrop(BaseTransform):
         self.overlay_p = overlay_p
 
     def apply_transform(
-        self, image: Image.Image, metadata: Optional[List[Dict[str, Any]]] = None
+        self, image: Image.Image, metadata: Optional[List[Dict[str, Any]]] = None, bboxes: Optional[List[Tuple]] = None, bbox_format: Optional[str] = None
     ) -> Image.Image:
 
         if random.uniform(0.0, 1.0) < self.overlay_p:
@@ -289,7 +289,7 @@ class RandomEmojiOverlay(BaseTransform):
         self.opacity = opacity
 
     def apply_transform(
-        self, image: Image.Image, metadata: Optional[List[Dict[str, Any]]] = None
+        self, image: Image.Image, metadata: Optional[List[Dict[str, Any]]] = None, bboxes: Optional[List[Tuple]] = None, bbox_format: Optional[str] = None
     ) -> Image.Image:
         emoji_path = random.choice(self.emoji_paths)
         return overlay_emoji(
@@ -425,7 +425,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     loss_fn = losses.ContrastiveLoss(pos_margin=args.pos_margin, neg_margin=args.neg_margin)
     loss_fn = losses.CrossBatchMemory(loss_fn, embedding_size=256, memory_size=args.memory_size)
-    loss_fn = pml_dist.DistributedLossWrapper(loss=loss_fn, device_ids=[args.rank])
+    loss_fn = pml_dist.DistributedLossWrapper(loss=loss_fn)
 
     decay = []
     no_decay = []
@@ -443,7 +443,7 @@ def main_worker(gpu, ngpus_per_node, args):
     ]
 
     optimizer = torch.optim.SGD(optim_params, init_lr, momentum=args.momentum)
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.cuda.amp.GradScaler('cuda')
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -552,7 +552,7 @@ def train_one_epoch(train_loader, model, loss_fn, optimizer, scaler, epoch, args
         ], dim=0).cuda(args.gpu, non_blocking=True)
         labels = torch.tile(labels, dims=(args.ncrops,))
 
-        with torch.cuda.amp.autocast():
+        with torch.cuda.amp.autocast('cuda'):
             embeddings = model(images)
             loss = loss_fn(embeddings, labels)
 
