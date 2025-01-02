@@ -425,7 +425,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     loss_fn = losses.ContrastiveLoss(pos_margin=args.pos_margin, neg_margin=args.neg_margin)
     loss_fn = losses.CrossBatchMemory(loss_fn, embedding_size=256, memory_size=args.memory_size)
-    loss_fn = pml_dist.DistributedLossWrapper(loss=loss_fn)
+    loss_fn = pml_dist.DistributedLossWrapper(loss=loss_fn, efficient=True)
 
     decay = []
     no_decay = []
@@ -443,7 +443,7 @@ def main_worker(gpu, ngpus_per_node, args):
     ]
 
     optimizer = torch.optim.SGD(optim_params, init_lr, momentum=args.momentum)
-    scaler = torch.cuda.amp.GradScaler('cuda')
+    scaler = torch.amp.GradScaler('cuda')
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -552,7 +552,7 @@ def train_one_epoch(train_loader, model, loss_fn, optimizer, scaler, epoch, args
         ], dim=0).cuda(args.gpu, non_blocking=True)
         labels = torch.tile(labels, dims=(args.ncrops,))
 
-        with torch.cuda.amp.autocast('cuda'):
+        with torch.amp.autocast('cuda'):
             embeddings = model(images)
             loss = loss_fn(embeddings, labels)
 
@@ -631,7 +631,7 @@ def extract(args):
         feats = []
         for _, image in tqdm(loader, total=len(loader)):
             image = image.cuda()
-            with torch.no_grad(), torch.cuda.amp.autocast():
+            with torch.no_grad(), torch.amp.autocast():
                 f = model(image)
             feats.append(f.cpu().numpy())
         feats = np.concatenate(feats, axis=0)
